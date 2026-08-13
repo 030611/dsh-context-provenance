@@ -2,7 +2,7 @@ import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContextBreakdownProjection, ContextPressureProjection } from '@deepseek-ai/dsh-token-meter'
 import type { SkillCatalogSnapshot } from '@deepseek-ai/dsh-skill'
-import { createHash } from 'node:crypto'
+import { createHmac, randomBytes } from 'node:crypto'
 import type {
   ContextProvenanceReport, EvidenceField, RequestComparison, RequestObservation,
 } from './types.ts'
@@ -14,6 +14,18 @@ const BREAKDOWN_SOURCE = '@deepseek-ai/dsh-token-meter contextBreakdown projecti
 const PRESSURE_SOURCE = '@deepseek-ai/dsh-token-meter contextPressure projection'
 const SKILL_SOURCE = '@deepseek-ai/dsh-skill SkillRegistry.snapshot'
 const PLUGIN_INVENTORY_SOURCE = '@deepseek-ai/dsh-host-plugin-inventory pluginInventory/list'
+const FINGERPRINT_KEY = randomBytes(32)
+const fingerprints = new WeakMap<RequestObservation, { system: string; tools: string }>()
+
+export class InstructionSourceTracker {
+  processedEvents = 0
+  scannedEvents = 0
+  readonly active = new Map<string, string>()
+}
+
+export function createInstructionSourceTracker(): InstructionSourceTracker {
+  return new InstructionSourceTracker()
+}
 
 export function observed<T>(value: T, source: string, note?: string): EvidenceField<T> {
   return { status: 'Observed', value, source, ...(note === undefined ? {} : { note }) }
@@ -27,9 +39,16 @@ export function unavailable<T>(source: string, note: string): EvidenceField<T> {
   return { status: 'Unavailable', source, note }
 }
 
-function instructionSources(agent: Agent): string[] {
-  const active = new Map<string, string>()
-  for (const event of agent.session.events) {
+function instructionSources(agent: Agent, tracker: InstructionSourceTracker): string[] {
+  const events = agent.session.events
+  if (events.length < tracker.processedEvents) {
+    tracker.processedEvents = 0
+    tracker.active.clear()
+  }
+  for (let index = tracker.processedEvents; index < events.length; index += 1) {
+    const event = events[index]
+    if (event === undefined) continue
+    tracker.scannedEvents += 1
     if (event.type !== 'user/message') continue
     const source: unknown = event.data.source
     if (typeof source !== 'object' || source === null || !('kind' in source)
@@ -38,11 +57,15 @@ function instructionSources(agent: Agent): string[] {
       if (typeof raw !== 'object' || raw === null || !('action' in raw)
         || !('scope' in raw) || !('path' in raw)
         || typeof raw.scope !== 'string' || typeof raw.path !== 'string') continue
-      if (raw.action === 'remove') active.delete(raw.scope)
-      else if (raw.action === 'set' || raw.action === 'replace') active.set(raw.scope, raw.path)
+      const scopeKey = privateFingerprint(raw.scope)
+      if (raw.action === 'remove') tracker.active.delete(scopeKey)
+      else if (raw.action === 'set' || raw.action === 'replace') {
+        tracker.active.set(scopeKey, projectAgentsPath(raw.path, agent.session.header.cwd ?? ''))
+      }
     }
   }
-  return [...new Set(active.values())].sort()
+  tracker.processedEvents = events.length
+  return [...new Set(tracker.active.values())].sort()
 }
 
 export function captureRequest(
@@ -50,9 +73,10 @@ export function captureRequest(
   request: GenerateOptions,
   ordinal: number,
   breakdown?: ContextBreakdownProjection,
+  instructionTracker: InstructionSourceTracker = createInstructionSourceTracker(),
 ): RequestObservation {
   const context = agent.session.requestContext()
-  return {
+  const observation: RequestObservation = {
     ordinal,
     provider: observed(request.provider, REQUEST_SOURCE),
     model: observed(request.model, REQUEST_SOURCE),
@@ -60,21 +84,38 @@ export function captureRequest(
       ? unavailable(CONTEXT_SOURCE, 'The adapter did not advertise a context window.')
       : observed(context.contextWindow, CONTEXT_SOURCE, 'Adapter-advertised capacity, not an independently verified hard limit.'),
     systemPresent: observed(request.system !== undefined && request.system.length > 0, REQUEST_SOURCE, 'Only presence is retained; text is never stored.'),
-    systemSha256: observed(sha256(request.system ?? ''), REQUEST_SOURCE, 'One-way equality fingerprint; prompt text is never retained.'),
     toolNames: observed((request.tools ?? []).map(tool => tool.name), REQUEST_SOURCE, 'Descriptions and parameter schemas are never stored.'),
-    toolCatalogSha256: observed(sha256(JSON.stringify(request.tools ?? [])), REQUEST_SOURCE, 'One-way equality fingerprint; schema bodies are never retained.'),
     toolOwners: unavailable('public ToolSchema', 'ToolSchema has no owner or plugin provenance field.'),
-    agentsSources: observed(instructionSources(agent), INSTRUCTION_SOURCE, 'Paths recorded by durable injections; not all files on disk or hidden instructions.'),
+    agentsSources: observed(instructionSources(agent, instructionTracker), INSTRUCTION_SOURCE, 'Path categories from durable injections; raw paths, files on disk, and hidden instructions are not exposed.'),
     contextBreakdown: {
       systemTokens: estimatedBreakdown(breakdown, 'systemTokens'),
       toolsTokens: estimatedBreakdown(breakdown, 'toolsTokens'),
       messageTokens: estimatedBreakdown(breakdown, 'messageTokens'),
     },
   }
+  fingerprints.set(observation, {
+    system: privateFingerprint(request.system ?? ''),
+    tools: privateFingerprint(JSON.stringify(request.tools ?? [])),
+  })
+  return observation
 }
 
-function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex')
+function privateFingerprint(value: string): string {
+  return createHmac('sha256', FINGERPRINT_KEY).update(value).digest('hex')
+}
+
+function projectAgentsPath(path: string, cwd: string): string {
+  const normalizedPath = path.replaceAll('\\', '/').replace(/\/+$/u, '')
+  const normalizedCwd = cwd.replaceAll('\\', '/').replace(/\/+$/u, '')
+  const caseFold = /^[A-Za-z]:\//u.test(normalizedPath)
+  const candidate = caseFold ? normalizedPath.toLowerCase() : normalizedPath
+  const workspace = caseFold ? normalizedCwd.toLowerCase() : normalizedCwd
+  const absolute = /^(?:[A-Za-z]:\/|\/|file:)/u.test(normalizedPath)
+  if (!absolute) return normalizedPath.includes('/') ? 'workspace-nested' : 'workspace-root'
+  if (workspace.length > 0 && candidate.startsWith(`${workspace}/`)) {
+    return candidate.slice(workspace.length + 1).includes('/') ? 'workspace-nested' : 'workspace-root'
+  }
+  return 'outside-workspace'
 }
 
 function valueOf<T>(field: EvidenceField<T>): T | undefined {
@@ -96,13 +137,17 @@ export function compareRequests(
   const previousAgents = valueOf(previous.agentsSources) ?? []
   const currentAgents = valueOf(current.agentsSources) ?? []
   const delta = tokenDelta(previous, current)
+  const previousFingerprint = fingerprints.get(previous)
+  const currentFingerprint = fingerprints.get(current)
   return {
     available: true,
     providerChanged: valueOf(previous.provider) !== valueOf(current.provider),
     modelChanged: valueOf(previous.model) !== valueOf(current.model),
     systemPresenceChanged: valueOf(previous.systemPresent) !== valueOf(current.systemPresent),
-    systemChanged: valueOf(previous.systemSha256) !== valueOf(current.systemSha256),
-    toolCatalogChanged: valueOf(previous.toolCatalogSha256) !== valueOf(current.toolCatalogSha256),
+    ...(previousFingerprint === undefined || currentFingerprint === undefined ? {} : {
+      systemChanged: previousFingerprint.system !== currentFingerprint.system,
+      toolCatalogChanged: previousFingerprint.tools !== currentFingerprint.tools,
+    }),
     addedTools: setDifference(currentTools, previousTools),
     removedTools: setDifference(previousTools, currentTools),
     addedAgentsSources: setDifference(currentAgents, previousAgents),
@@ -154,16 +199,27 @@ export function buildReport(input: {
   pressure?: ContextPressureProjection
   skills?: SkillCatalogSnapshot
   skillsError?: string
-  plugins?: ContextProvenanceReport['plugins']['entries']['value']
+  pluginsError?: string
+  plugins?: ReadonlyArray<{
+    entryId: string
+    moduleName: string
+    enabled: boolean
+    fiberPhase: 'pending' | 'loading' | 'active' | 'failed' | 'unloading' | null
+  }>
 }): ContextProvenanceReport {
-  const skillNote = input.skillsError ?? 'The skills service is not present in this composition.'
+  const skillNote = input.skillsError === undefined
+    ? 'The skills service is not present in this composition.'
+    : 'Skill discovery failed; provider details were withheld.'
+  const pluginNote = input.pluginsError === undefined
+    ? 'The official plugin inventory service is absent in this composition.'
+    : 'Plugin inventory failed; provider details were withheld.'
   const skillEntries = input.skills?.skills.map(skill => ({
     name: skill.name,
-    source: skill.source,
-    provider: skill.provider,
+    sourceCategory: skillSourceCategory(skill.source),
+    providerCategory: skillProviderCategory(skill.provider),
   }))
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     scope: 'requesting-agent',
     requests: {
       current: input.current,
@@ -187,8 +243,13 @@ export function buildReport(input: {
     },
     plugins: {
       entries: input.plugins === undefined
-        ? unavailable(PLUGIN_INVENTORY_SOURCE, 'The official plugin inventory service is absent in this composition.')
-        : observed(input.plugins, PLUGIN_INVENTORY_SOURCE, 'Point-in-time Loader entries only; not contribution or configuration provenance.'),
+        ? unavailable(PLUGIN_INVENTORY_SOURCE, pluginNote)
+        : observed(input.plugins.map((entry, index) => ({
+          index,
+          moduleKind: moduleKind(entry.moduleName),
+          enabled: entry.enabled,
+          fiberPhase: entry.fiberPhase,
+        })), PLUGIN_INVENTORY_SOURCE, 'Ordered point-in-time state with module syntax categories; entry ids and module specifiers are intentionally withheld.'),
       contributionMapping: unavailable('pluginInventory/list and public schemas', 'No public interface maps a Loader entry to request tools, skills, prompts, or AGENTS sources.'),
     },
     unavailable: {
@@ -204,4 +265,34 @@ export function buildReport(input: {
       ],
     },
   }
+}
+
+function skillSourceCategory(source: string): NonNullable<ContextProvenanceReport['skills']['entries']['value']>[number]['sourceCategory'] {
+  switch (source) {
+    case 'project-dsh':
+    case 'project-agents':
+    case 'runtime':
+    case 'user-dsh':
+    case 'user-agents':
+    case 'custom':
+    case 'bundled': return source
+    default: return 'other'
+  }
+}
+
+function skillProviderCategory(provider: string): NonNullable<ContextProvenanceReport['skills']['entries']['value']>[number]['providerCategory'] {
+  if (provider === 'runtime') return 'runtime'
+  if (provider === 'filesystem' || provider.includes('skill-filesystem')) return 'filesystem'
+  if (provider.startsWith('@') || provider.includes('/')) return 'package'
+  return 'other'
+}
+
+function moduleKind(moduleName: string): NonNullable<ContextProvenanceReport['plugins']['entries']['value']>[number]['moduleKind'] {
+  if (moduleName.startsWith('file:')) return 'file-url'
+  if (/^(?:[A-Za-z]:[\\/]|\/)/u.test(moduleName)) return 'absolute-path'
+  if (/^\.{1,2}[\\/]/u.test(moduleName)) return 'relative-path'
+  if (/^(?:cordis|node):/u.test(moduleName)) return 'builtin'
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(moduleName)) return 'url'
+  if (/^(?:@[a-z0-9._~-]+\/)?[a-z0-9._~-]+(?:\/.*)?$/iu.test(moduleName)) return 'package'
+  return 'other'
 }

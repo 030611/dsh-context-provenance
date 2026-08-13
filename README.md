@@ -14,12 +14,12 @@ Public collision review found official `pluginInventory/list`, official token-me
 |---|---|---|---|
 | Effective request provider/model | Observed | `llm/stream` `GenerateOptions`, gated by `isAgentLoopRequest()` | Ordinary Agent-loop requests only |
 | Adapter context window | Observed | `Session.requestContext()` | Adapter-advertised capacity, optional |
-| System presence and SHA-256 | Observed | `GenerateOptions.system` | No text retained; digest proves equality only |
-| Tool names and catalog SHA-256 | Observed | `GenerateOptions.tools` | No descriptions/parameter schemas retained |
+| System presence/change | Observed | `GenerateOptions.system` | No text or digest is returned; change uses a process-random keyed comparison kept only in memory |
+| Tool names/catalog change | Observed | `GenerateOptions.tools` | No descriptions, parameter schemas, or digest is returned |
 | Tool owner/plugin mapping | Unavailable | Public `ToolSchema` has no owner | No inference from names |
-| Active AGENTS sources | Observed | Durable `user/message.source.kind=agent-instructions` changes | Injected paths only; not every file on disk |
-| Skill name/source/provider | Observed or partial | `ctx.skills.snapshot({ cwd, scope })` | `complete=false` is explicitly incomplete |
-| Loader entry id/module/enabled/fiber phase | Observed | Official `pluginInventory/list` service | Point-in-time inventory, not contribution provenance |
+| Active AGENTS source categories | Observed | Durable `user/message.source.kind=agent-instructions` changes | Only workspace-root/workspace-nested/outside-workspace; raw paths withheld |
+| Skill name/source/provider categories | Observed or partial | `ctx.skills.snapshot({ cwd, scope })` | Raw custom source/provider identifiers withheld; `complete=false` is incomplete |
+| Loader order/module-kind/enabled/fiber phase | Observed | Official `pluginInventory/list` service | `entryId` and `moduleName` withheld; not contribution provenance |
 | System/tools/messages breakdown | Estimated | Official `contextBreakdown` projection | Fixed heuristic; not provider tokenization or billing |
 | Prompt pressure | Observed | Official `contextPressure.pressureTokens` | Derived from provider-reported usage buckets |
 | Projected next prompt | Estimated | Official `contextPressure.projectedTokens` | Provider anchor plus heuristic delta |
@@ -34,7 +34,11 @@ Add the bundle to a profile, restart DSH, then use the existing inspect tools to
 
 ## Privacy and lifecycle
 
-Request bodies are synchronously reduced at the `llm/stream` boundary to provider/model, booleans, names, official numeric projections, recorded paths, and SHA-256 equality fingerprints. System text, messages, tool descriptions, JSON parameter schemas, skill bodies, and AGENTS contents are never retained or returned. The in-memory two-request WeakMap, request listener, and inspect registration become unreachable or are disposed with the plugin Fiber. Restarting or unloading loses all observations.
+Request bodies are synchronously reduced at the `llm/stream` boundary to provider/model, booleans, safe categories, tool names, and official numeric projections. System text, messages, tool descriptions, JSON parameter schemas, raw plugin identifiers, raw skill provider/source identifiers, and AGENTS paths or contents are never returned.
+
+**Equality fingerprints are not privacy protection.** A plain SHA-256 digest of a low-entropy or known prompt/schema lets an observer confirm guesses offline. Earlier schema version 1 returned such digests; schema version 2 removes them. Adjacent `systemChanged` and `toolCatalogChanged` booleans are computed from process-random keyed fingerprints held only in a private WeakMap and are never serialized. These booleans still reveal equality/change across the retained adjacent pair, which is the minimum comparison signal this plugin intentionally exposes.
+
+AGENTS folding is incremental per live Agent. The first request after plugin load performs one O(session events) catch-up; subsequent requests examine only newly appended events. If a session event view shrinks, the fold safely rebuilds from the visible tail. The in-memory two-request and instruction-state WeakMaps, request listener, and inspect registration become unreachable or are disposed with the plugin Fiber. Restarting or unloading loses all observations.
 
 ## Version degradation
 
@@ -51,7 +55,8 @@ No direct effect on ordinary requests. A deliberate inspect call adds its bounde
 ## Known limitations
 
 - Loader entries do not identify the bundle, profile, override, or dependency that introduced them.
+- Plugin inventory reveals ordered enablement and lifecycle categories, but never raw entry ids, package names, file URLs, absolute paths, or patch specifiers.
 - A tool name or schema does not identify its owning plugin.
-- Skill summaries describe the current winning registry observation, not proof that every listed skill body appeared in a past request.
-- AGENTS paths are durable injected-source metadata, not a filesystem inventory or proof of hidden instructions.
+- Skill names remain visible because they are the public callable identity; source/provider are reduced to fixed categories. A skill name itself may still be sensitive if a deployment chooses a sensitive name.
+- AGENTS location categories are durable injected-source metadata, not a filesystem inventory or proof of hidden instructions.
 - Adjacent observations cover actual ordinary `llm/stream` calls seen while this plugin is mounted. Earlier requests, auxiliary calls, and observations lost on unload or restart are unavailable.

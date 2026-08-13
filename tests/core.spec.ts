@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
-import { buildReport, captureRequest, compareRequests } from '../src/core.ts'
+import {
+  buildReport, captureRequest, compareRequests, createInstructionSourceTracker,
+} from '../src/core.ts'
 
 function agentWith(input: {
   contextWindow?: number
   events?: unknown[]
+  cwd?: string
 } = {}): Agent {
   return {
     session: {
       events: input.events ?? [],
+      header: { cwd: input.cwd ?? 'D:\\work\\project' },
       requestContext: () => input.contextWindow === undefined
         ? { provider: 'p', model: 'm' }
         : { provider: 'p', model: 'm', contextWindow: input.contextWindow },
@@ -43,14 +47,16 @@ describe('field-level evidence', () => {
     expect(serialized).not.toContain('TOP SECRET SYSTEM TEXT')
     expect(serialized).not.toContain('SECRET DESCRIPTION')
     expect(serialized).not.toContain('SECRET SCHEMA')
-    expect(observation.systemSha256.value).toMatch(/^[0-9a-f]{64}$/)
+    expect(serialized).not.toMatch(/[0-9a-f]{64}/)
+    expect(observation).not.toHaveProperty('systemSha256')
+    expect(observation).not.toHaveProperty('toolCatalogSha256')
   })
 
   it('folds only durable AGENTS source metadata without reading content', () => {
     const events = [
       { type: 'user/message', data: { source: { kind: 'agent-instructions', changes: [
-        { action: 'set', scope: '.', path: 'AGENTS.md', digest: 'secret-digest' },
-        { action: 'set', scope: 'pkg', path: 'pkg/AGENTS.md' },
+        { action: 'set', scope: '.', path: 'D:\\Users\\alice\\secret-project\\AGENTS.md', digest: 'secret-digest' },
+        { action: 'set', scope: 'pkg', path: 'D:\\work\\project\\pkg\\AGENTS.md' },
       ] } } },
       { type: 'user/message', data: { source: { kind: 'agent-instructions', changes: [
         { action: 'remove', scope: '.', path: 'AGENTS.md' },
@@ -59,8 +65,32 @@ describe('field-level evidence', () => {
     const withoutSystem = request()
     delete withoutSystem.system
     const observation = captureRequest(agentWith({ events }), withoutSystem, 1)
-    expect(observation.agentsSources.value).toEqual(['pkg/AGENTS.md'])
+    expect(observation.agentsSources.value).toEqual(['workspace-nested'])
     expect(JSON.stringify(observation)).not.toContain('secret-digest')
+    expect(JSON.stringify(observation)).not.toContain('alice')
+    expect(JSON.stringify(observation)).not.toContain('secret-project')
+  })
+
+  it('incrementally folds 100k durable events within a bounded budget', () => {
+    const events = Array.from({ length: 100_000 }, (_, index) => ({
+      type: index === 99_999 ? 'user/message' : 'assistant/message',
+      data: index === 99_999
+        ? { source: { kind: 'agent-instructions', changes: [
+          { action: 'set', scope: '.', path: 'D:\\work\\project\\AGENTS.md' },
+        ] } }
+        : {},
+    }))
+    const tracker = createInstructionSourceTracker()
+    const agent = agentWith({ events })
+    const started = performance.now()
+    const first = captureRequest(agent, request(), 1, undefined, tracker)
+    const firstMs = performance.now() - started
+    expect(first.agentsSources.value).toEqual(['workspace-root'])
+    expect(tracker.processedEvents).toBe(100_000)
+    captureRequest(agent, request(), 2, undefined, tracker)
+    expect(tracker.processedEvents).toBe(100_000)
+    expect(tracker.scannedEvents).toBe(100_000)
+    expect(firstMs).toBeLessThan(250)
   })
 
   it('compares two adjacent observations without claiming causality', () => {
@@ -108,17 +138,50 @@ describe('capability and version degradation', () => {
           name: 'review',
           description: 'sensitive routing copy',
           invocation: { modelInvocable: true, userInvocable: true },
-          source: 'project-dsh',
-          provider: 'filesystem',
+          source: 'D:\\Users\\alice\\private-skills',
+          provider: '@private/acme-skill-loader',
         }],
       },
     })
     expect(report.skills.complete).toMatchObject({ status: 'Observed', value: false })
     expect(report.skills.entries).toMatchObject({
       status: 'Observed',
-      value: [{ name: 'review', source: 'project-dsh', provider: 'filesystem' }],
+      value: [{ name: 'review', sourceCategory: 'other', providerCategory: 'package' }],
     })
+    expect(JSON.stringify(report)).not.toContain('alice')
+    expect(JSON.stringify(report)).not.toContain('@private/acme-skill-loader')
     expect(JSON.stringify(report)).not.toContain('sensitive routing copy')
+  })
+
+  it('withholds sensitive discovery errors', () => {
+    const report = buildReport({
+      previous: null,
+      current: null,
+      skillsError: 'D:\\Users\\alice\\private-skills failed',
+      pluginsError: 'file:///D:/Users/alice/secret-patch.yml failed',
+    })
+    expect(report.skills.entries.note).not.toContain('alice')
+    expect(report.plugins.entries.note).not.toContain('alice')
+    expect(JSON.stringify(report)).not.toContain('secret-patch')
+  })
+
+  it('minimizes plugin inventory fields and classifies sensitive module specifiers', () => {
+    const report = buildReport({
+      previous: null,
+      current: null,
+      plugins: [
+        { entryId: 'patch:D:\\Users\\alice\\secret.yml#1', moduleName: 'file:///D:/Users/alice/private/plugin.js', enabled: true, fiberPhase: 'active' },
+        { entryId: '@private/acme', moduleName: '@private/acme-plugin', enabled: false, fiberPhase: null },
+      ] as never,
+    })
+    expect(report.plugins.entries.value).toEqual([
+      { index: 0, moduleKind: 'file-url', enabled: true, fiberPhase: 'active' },
+      { index: 1, moduleKind: 'package', enabled: false, fiberPhase: null },
+    ])
+    const serialized = JSON.stringify(report)
+    expect(serialized).not.toContain('alice')
+    expect(serialized).not.toContain('@private')
+    expect(serialized).not.toContain('secret.yml')
   })
 
   it('keeps the explicit unavailable boundary list', () => {

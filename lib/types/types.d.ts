@@ -14,9 +14,7 @@ export interface RequestObservation {
     model: EvidenceField<string>;
     contextWindow: EvidenceField<number>;
     systemPresent: EvidenceField<boolean>;
-    systemSha256: EvidenceField<string>;
     toolNames: EvidenceField<string[]>;
-    toolCatalogSha256: EvidenceField<string>;
     toolOwners: EvidenceField<never>;
     agentsSources: EvidenceField<string[]>;
     contextBreakdown: {
@@ -45,7 +43,7 @@ export interface RequestComparison {
 }
 /** Privacy-minimal report returned by the Cordis inspect provider. */
 export interface ContextProvenanceReport {
-    schemaVersion: 1;
+    schemaVersion: 2;
     scope: 'requesting-agent';
     requests: {
         current: RequestObservation | null;
@@ -63,14 +61,14 @@ export interface ContextProvenanceReport {
         complete: EvidenceField<boolean>;
         entries: EvidenceField<Array<{
             name: string;
-            source: string;
-            provider: string;
+            sourceCategory: 'project-dsh' | 'project-agents' | 'runtime' | 'user-dsh' | 'user-agents' | 'custom' | 'bundled' | 'other';
+            providerCategory: 'runtime' | 'filesystem' | 'package' | 'other';
         }>>;
     };
     plugins: {
         entries: EvidenceField<Array<{
-            entryId: string;
-            moduleName: string;
+            index: number;
+            moduleKind: 'package' | 'file-url' | 'absolute-path' | 'relative-path' | 'builtin' | 'url' | 'other';
             enabled: boolean;
             fiberPhase: 'pending' | 'loading' | 'active' | 'failed' | 'unloading' | null;
         }>>;

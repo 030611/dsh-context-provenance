@@ -10,11 +10,11 @@ import type { ContextBreakdownProjection, ContextPressureProjection } from '@dee
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import type { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import type { JsonValue } from '@deepseek-ai/dsh-session/types'
-import { buildReport, captureRequest } from './core.ts'
+import { buildReport, captureRequest, createInstructionSourceTracker } from './core.ts'
 import type { ContextProvenanceReport, RequestObservation } from './types.ts'
 
 export type * from './types.ts'
-export { buildReport, captureRequest, compareRequests } from './core.ts'
+export { buildReport, captureRequest, compareRequests, createInstructionSourceTracker } from './core.ts'
 
 export const name = 'context-provenance'
 
@@ -62,12 +62,25 @@ function provider(ctx: Context, observations: WeakMap<Agent, RequestPair>): Host
             signal,
             scope: agent,
           })
-        } catch (error) {
-          skillsError = `Skill discovery failed: ${error instanceof Error ? error.message : String(error)}`
+        } catch {
+          skillsError = 'withheld'
         }
       }
       signal.throwIfAborted()
-      const plugins = pluginInventory?.list().entries.map(entry => ({ ...entry, entryId: String(entry.entryId) }))
+      let plugins: Array<{
+        entryId: string
+        moduleName: string
+        enabled: boolean
+        fiberPhase: 'pending' | 'loading' | 'active' | 'failed' | 'unloading' | null
+      }> | undefined
+      let pluginsError: string | undefined
+      if (pluginInventory !== undefined) {
+        try {
+          plugins = pluginInventory.list().entries.map(entry => ({ ...entry, entryId: String(entry.entryId) }))
+        } catch {
+          pluginsError = 'withheld'
+        }
+      }
       const report = buildReport({
         previous: pair.previous,
         current: pair.current,
@@ -75,6 +88,7 @@ function provider(ctx: Context, observations: WeakMap<Agent, RequestPair>): Host
         ...(pressure === undefined ? {} : { pressure }),
         ...(skillSnapshot === undefined ? {} : { skills: skillSnapshot }),
         ...(skillsError === undefined ? {} : { skillsError }),
+        ...(pluginsError === undefined ? {} : { pluginsError }),
         ...(plugins === undefined ? {} : { plugins }),
       }) satisfies ContextProvenanceReport
       return report as unknown as JsonValue
@@ -85,6 +99,7 @@ function provider(ctx: Context, observations: WeakMap<Agent, RequestPair>): Host
 /** Register the observer and its read-only inspect report. */
 export function apply(ctx: Context): void {
   const observations = new WeakMap<Agent, RequestPair>()
+  const instructionTrackers = new WeakMap<Agent, ReturnType<typeof createInstructionSourceTracker>>()
   ctx.inject(['cordisInspect'], (inspectCtx) => {
     inspectCtx.effect(
       () => inspectCtx.cordisInspect.register(provider(inspectCtx, observations)),
@@ -101,10 +116,12 @@ export function apply(ctx: Context): void {
         const agent = agents?.get(request.sessionId)
         if (agent !== undefined) {
           const pair = observations.get(agent) ?? { previous: null, current: null }
+          const instructionTracker = instructionTrackers.get(agent) ?? createInstructionSourceTracker()
           const projections = ctx.get('sessionProjections', false) as SessionProjectionRegistry | undefined
           const breakdown = projections?.snapshot(agent.session).values.contextBreakdown as ContextBreakdownProjection | undefined
-          shift(pair, captureRequest(agent, request, (pair.current?.ordinal ?? 0) + 1, breakdown))
+          shift(pair, captureRequest(agent, request, (pair.current?.ordinal ?? 0) + 1, breakdown, instructionTracker))
           observations.set(agent, pair)
+          instructionTrackers.set(agent, instructionTracker)
         }
       } catch (error) {
         ctx.logger.warn(`context-provenance observation skipped: ${error instanceof Error ? error.message : String(error)}`)

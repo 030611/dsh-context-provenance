@@ -14,7 +14,7 @@ Baseline: DeepSeek Harness `47f943859bef60e4160492346772ded9b24f765a` (`master`,
 
 | Surface | Official source at pinned commit | What is used |
 |---|---|---|
-| actual DSH request boundary | `packages/llm/llm/src/index.ts:51-64,911-928`; `src/types.ts:320-355`; `src/call-config.ts:61-77` | provider/model, system presence/fingerprint, tool names/fingerprint |
+| actual DSH request boundary | `packages/llm/llm/src/index.ts:51-64,911-928`; `src/types.ts:320-355`; `src/call-config.ts:61-77` | provider/model, system presence/change, tool names/catalog change; no returned digest |
 | route metadata | `packages/core/session/src/types.ts:212-220`; `src/index.ts:682-699` | optional advertised context window |
 | request state | `packages/core/agent-loop/src/agent.ts:438-483` | audit proof that header/context are change-logged, not request counters |
 | token projections | `packages/llm/token-meter/src/projection.ts:20-65`; `breakdown-projection.ts:42-69`; `usage-projection.ts:142-205` | official breakdown (Estimated), pressure (provider-reported-derived), projection (Estimated) |
@@ -32,4 +32,4 @@ Baseline: DeepSeek Harness `47f943859bef60e4160492346772ded9b24f765a` (`master`,
 
 ## Hard boundary
 
-Unavailable means unavailable. The report never claims tool-to-plugin ownership, prompt-section ownership, every skill/AGENTS candidate, hidden provider policy, private system instructions, tools hidden from the requesting Agent, remote HTTP receipt, or a complete causal explanation of behavior differences.
+Unavailable means unavailable. Raw plugin entry/module identifiers, raw AGENTS paths, and arbitrary skill source/provider identifiers are intentionally withheld even when the Host can observe them; their report fields are safe Observed projections. The report never claims tool-to-plugin ownership, prompt-section ownership, every skill/AGENTS candidate, hidden provider policy, private system instructions, tools hidden from the requesting Agent, remote HTTP receipt, or a complete causal explanation of behavior differences.

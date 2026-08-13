@@ -1,0 +1,4 @@
+# Opt-in Host observer. It registers one read-only Cordis inspect provider.
+- insert:
+    - id: context-provenance
+      name: dsh-context-provenance

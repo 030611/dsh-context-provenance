@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": 1,
+  "id": "dsh-context-provenance",
+  "name": "DSH Context Provenance",
+  "version": "0.1.0",
+  "kind": "profile-bundle",
+  "package": "dsh-context-provenance",
+  "bundlePatch": "./cordis.patch.yml",
+  "entry": "./lib/index.js",
+  "compatibility": {
+    "deepseekHarnessCommit": "47f943859bef60e4160492346772ded9b24f765a",
+    "deepseekHarness": ">=0.1.0-rc.5 <0.2.0",
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "effects": [
+    "llm/stream",
+    "optional cordisInspect.register"
+  ],
+  "network": false,
+  "filesystem": false,
+  "modelVisible": true
+}

@@ -1,7 +1,7 @@
 # Security policy
 
-This package is a locally prepared public-release candidate; no public
-repository, release, or npm publication exists yet. It is observe-only and
+This package is a public-source release candidate; no GitHub Release or npm
+publication exists yet. It is observe-only and
 must remain CPU-only and local-only: no network, filesystem persistence,
 subprocesses, session mutation, request mutation, permission mutation, tool
 registration, or model-routing changes are in scope.
@@ -9,11 +9,10 @@ registration, or model-routing changes are in scope.
 ## Reporting
 
 Do not include prompt text, message bodies, tool arguments, AGENTS contents,
-absolute paths, credentials, or production session exports in a report. Until
-the planned `030611/dsh-context-provenance` repository exists and publishes a
-contact channel, there is no public security contact or disclosure process.
-Use the future repository owner's established private channel and provide the
-smallest reproduction that demonstrates the issue.
+absolute paths, credentials, or production session exports in a report. Open
+a content-free issue at the public repository to request a private reporting
+channel, then provide the smallest synthetic reproduction that demonstrates
+the issue through that channel.
 
 ## Privacy boundary
 

@@ -2,6 +2,14 @@
   "name": "dsh-context-provenance",
   "version": "0.1.0",
   "description": "Observe-only provenance ledger over public DeepSeek Harness runtime evidence",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/030611/dsh-context-provenance.git"
+  },
+  "homepage": "https://github.com/030611/dsh-context-provenance#readme",
+  "bugs": {
+    "url": "https://github.com/030611/dsh-context-provenance/issues"
+  },
   "private": false,
   "publishConfig": {
     "access": "public"

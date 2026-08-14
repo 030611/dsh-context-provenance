@@ -1,11 +1,10 @@
 # Public release-candidate checklist
 
-This checklist prepares a publishable candidate locally only. Do not create a
-repository, push, tag, create a release, or run `npm publish` in this pass.
-`private: false` and `publishConfig.access: public` are packaging eligibility,
-not evidence of publication. Do not add `repository`, `homepage`, or `bugs`
-metadata until the planned `030611/dsh-context-provenance` repository exists;
-when it does, those fields may point only there.
+The public source repository now exists at `030611/dsh-context-provenance`.
+`private: false`, `publishConfig.access: public`, and repository metadata are
+packaging eligibility, not evidence of an npm publication. Do not tag, create
+a GitHub Release, or run `npm publish` until the pushed commit passes hosted CI
+and the release action is separately authorized.
 
 ## Before the local commit
 
@@ -26,6 +25,6 @@ when it does, those fields may point only there.
 ## CI boundary
 
 `.github/workflows/ci.yml` is deliberately read-only (`contents: read`) and
-runs the same frozen install plus `pnpm run check`. It is not evidence that CI
-has run until a repository host executes it. This local candidate does not
-create, configure, or contact a GitHub repository.
+runs the same frozen install plus `pnpm run check`. Local success is not
+evidence of hosted CI success; record the GitHub Actions run URL and conclusion
+before publishing.

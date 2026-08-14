@@ -34,7 +34,7 @@ Add the bundle to a profile, restart DSH, then use the existing inspect tools to
 
 ## Public release-candidate installation boundary
 
-This is a locally prepared public-release candidate, not a published npm package or a released GitHub project. No repository, tag, release, or npm publication has been created by this preparation. `private: false` and `publishConfig.access: public` only make the packed candidate eligible for a future authorized publication. Repository, homepage, and bugs metadata are intentionally absent until the planned `030611/dsh-context-provenance` repository actually exists; they must not be pointed elsewhere.
+The public source repository is [030611/dsh-context-provenance](https://github.com/030611/dsh-context-provenance). The package is not yet published to npm, and no tag or GitHub Release exists. Until a registry release is completed, treat the repository checkout and locally verified tarball as release-candidate artifacts rather than an npm installation promise.
 
 The public-interface audit is pinned to official DSH commit `47f943859bef60e4160492346772ded9b24f765a` and covers the rc.5 source seam. Local package gates and the temporary tarball installation/import smoke are exercised with the locked rc.6 development dependency set; the peer range remains exactly rc.5/rc.6. These are source/API, unit, lifecycle, loader-composition, built-artifact, patch, and package-install checks. They are not a claim of end-to-end Web UI, remote API, or live model/provider testing.
 

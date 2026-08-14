@@ -1,5 +1,19 @@
 # dsh-context-provenance
 
+[![CI](https://github.com/030611/dsh-context-provenance/actions/workflows/ci.yml/badge.svg)](https://github.com/030611/dsh-context-provenance/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-context-provenance)](https://www.npmjs.com/package/dsh-context-provenance)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![DSH Context Provenance social preview](docs/social-preview.jpg)
+
+**Compare adjacent request evidence as `Observed`, `Estimated`, or `Unavailable`—without returning prompt text, message content, tool schemas, or raw paths.**
+
+```sh
+dsh plugin --profile web add dsh-context-provenance
+```
+
+> Community-maintained and not an official DeepSeek project. Related trust-layer plugins: [Telemetry Redactor](https://github.com/030611/dsh-telemetry-redactor), [Verification Receipt](https://github.com/030611/dsh-verification-receipt), and [Evidence Audit](https://github.com/030611/qiushi-dsh-evidence-audit).
+
 An observe-only, CPU-only, local-only DeepSeek Harness plugin that reports what public runtime interfaces can actually prove about the requesting Agent's context. It retains only the two most recent ordinary agent-loop request observations in memory and exposes them through the existing Cordis inspect query mechanism. It performs no file, network, subprocess, GPU, persistence, session, permission, tool, model-routing, or request mutation.
 
 ## Audit verdict
@@ -34,10 +48,11 @@ Add the bundle to a profile, restart DSH, then use the existing inspect tools to
 
 ## Installation and compatibility boundary
 
-The public source repository is [030611/dsh-context-provenance](https://github.com/030611/dsh-context-provenance). Install the public package with:
+The public source repository is [030611/dsh-context-provenance](https://github.com/030611/dsh-context-provenance). Add the public bundle to the selected DSH profile, then inspect the resolved configuration:
 
-```bash
-pnpm add dsh-context-provenance
+```sh
+dsh plugin --profile <profile> add dsh-context-provenance
+dsh --profile <profile> --dump-config
 ```
 
 Before installing, verify the registry version, source tag, and release notes rather than treating an untagged repository checkout as a release artifact.

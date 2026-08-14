@@ -30,8 +30,13 @@ try {
   const project = join(stage, 'consumer')
   mkdirSync(project)
   writeFileSync(join(project, 'package.json'), '{"private":true,"type":"module"}\n')
-  const storeDir = runPnpm(['store', 'path'], root).trim()
-  runPnpm(['add', '--offline', '--ignore-scripts', '--store-dir', storeDir, tarball], project)
+  const installArgs = ['add', '--ignore-scripts']
+  if (process.env.DSH_TGZ_ALLOW_NETWORK !== '1') {
+    const storeDir = runPnpm(['store', 'path'], root).trim()
+    installArgs.push('--offline', '--store-dir', storeDir)
+  }
+  installArgs.push(tarball)
+  runPnpm(installArgs, project)
   const installed = JSON.parse(readFileSync(join(project, 'node_modules', 'dsh-context-provenance', 'package.json'), 'utf8'))
   if (installed.name !== 'dsh-context-provenance') throw new Error(`unexpected installed package name: ${installed.name}`)
   execFileSync(process.execPath, ['--input-type=module', '--eval', [

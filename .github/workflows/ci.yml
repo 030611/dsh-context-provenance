@@ -32,3 +32,4 @@ jobs:
       - run: pnpm run check
         env:
           DSH_OFFICIAL_CHECKOUT: ${{ github.workspace }}/official-dsh
+          DSH_TGZ_ALLOW_NETWORK: '1'

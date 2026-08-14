@@ -32,9 +32,15 @@ Every returned field carries `Observed`, `Estimated`, or `Unavailable`, its sour
 
 Add the bundle to a profile, restart DSH, then use the existing inspect tools to query Host provider `ContextProvenance`, method `report`. The provider appears when the official Cordis inspect service is present; an older composition without that service still mounts the observer but has no query surface. The provider is model-visible only when a user or model explicitly inspects it; the plugin adds no new tool schema or ordinary request content.
 
-## Public release-candidate installation boundary
+## Installation and compatibility boundary
 
-The public source repository is [030611/dsh-context-provenance](https://github.com/030611/dsh-context-provenance). The package is not yet published to npm, and no tag or GitHub Release exists. Until a registry release is completed, treat the repository checkout and locally verified tarball as release-candidate artifacts rather than an npm installation promise.
+The public source repository is [030611/dsh-context-provenance](https://github.com/030611/dsh-context-provenance). Install the public package with:
+
+```bash
+pnpm add dsh-context-provenance
+```
+
+Before installing, verify the registry version, source tag, and release notes rather than treating an untagged repository checkout as a release artifact.
 
 The public-interface audit is pinned to official DSH commit `47f943859bef60e4160492346772ded9b24f765a` and covers the rc.5 source seam. Local package gates and the temporary tarball installation/import smoke are exercised with the locked rc.6 development dependency set; the peer range remains exactly rc.5/rc.6. These are source/API, unit, lifecycle, loader-composition, built-artifact, patch, and package-install checks. They are not a claim of end-to-end Web UI, remote API, or live model/provider testing.
 

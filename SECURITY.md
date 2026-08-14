@@ -1,7 +1,6 @@
 # Security policy
 
-This package is a public-source release candidate; no GitHub Release or npm
-publication exists yet. It is observe-only and
+This package is public-source and observe-only. It
 must remain CPU-only and local-only: no network, filesystem persistence,
 subprocesses, session mutation, request mutation, permission mutation, tool
 registration, or model-routing changes are in scope.

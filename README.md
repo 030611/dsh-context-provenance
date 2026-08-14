@@ -32,6 +32,12 @@ Every returned field carries `Observed`, `Estimated`, or `Unavailable`, its sour
 
 Add the bundle to a profile, restart DSH, then use the existing inspect tools to query Host provider `ContextProvenance`, method `report`. The provider appears when the official Cordis inspect service is present; an older composition without that service still mounts the observer but has no query surface. The provider is model-visible only when a user or model explicitly inspects it; the plugin adds no new tool schema or ordinary request content.
 
+## Public release-candidate installation boundary
+
+This is a locally prepared public-release candidate, not a published npm package or a released GitHub project. No repository, tag, release, or npm publication has been created by this preparation. `private: false` and `publishConfig.access: public` only make the packed candidate eligible for a future authorized publication. Repository, homepage, and bugs metadata are intentionally absent until the planned `030611/dsh-context-provenance` repository actually exists; they must not be pointed elsewhere.
+
+The public-interface audit is pinned to official DSH commit `47f943859bef60e4160492346772ded9b24f765a` and covers the rc.5 source seam. Local package gates and the temporary tarball installation/import smoke are exercised with the locked rc.6 development dependency set; the peer range remains exactly rc.5/rc.6. These are source/API, unit, lifecycle, loader-composition, built-artifact, patch, and package-install checks. They are not a claim of end-to-end Web UI, remote API, or live model/provider testing.
+
 ## Privacy and lifecycle
 
 Request bodies are synchronously reduced at the `llm/stream` boundary to provider/model, booleans, safe categories, tool names, and official numeric projections. System text, messages, tool descriptions, JSON parameter schemas, raw plugin identifiers, raw skill provider/source identifiers, and AGENTS paths or contents are never returned.

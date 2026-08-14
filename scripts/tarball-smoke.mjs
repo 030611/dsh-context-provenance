@@ -13,8 +13,16 @@ const pnpmCli = process.platform === 'win32'
       .find(candidate => candidate.includes('codex-primary-runtime'))
   : undefined
 const runPnpm = (args, cwd) => {
-  if (pnpmCli !== undefined) return execFileSync(process.execPath, [pnpmCli, ...args], { cwd, stdio: 'pipe' })
-  return execFileSync('pnpm', args, { cwd, stdio: 'pipe' })
+  const command = pnpmCli !== undefined ? process.execPath : 'pnpm'
+  const commandArgs = pnpmCli !== undefined ? [pnpmCli, ...args] : args
+  try {
+    return execFileSync(command, commandArgs, { cwd, encoding: 'utf8', stdio: 'pipe' })
+  } catch (error) {
+    const output = [error.stdout, error.stderr]
+      .filter(value => typeof value === 'string' && value.length > 0)
+      .join('')
+    throw new Error(`pnpm ${args.join(' ')} failed:\n${output}`, { cause: error })
+  }
 }
 try {
   runPnpm(['pack', '--pack-destination', stage], root)
@@ -22,7 +30,8 @@ try {
   const project = join(stage, 'consumer')
   mkdirSync(project)
   writeFileSync(join(project, 'package.json'), '{"private":true,"type":"module"}\n')
-  runPnpm(['add', '--offline', '--ignore-scripts', tarball], project)
+  const storeDir = runPnpm(['store', 'path'], root).trim()
+  runPnpm(['add', '--offline', '--ignore-scripts', '--store-dir', storeDir, tarball], project)
   const installed = JSON.parse(readFileSync(join(project, 'node_modules', 'dsh-context-provenance', 'package.json'), 'utf8'))
   if (installed.name !== 'dsh-context-provenance') throw new Error(`unexpected installed package name: ${installed.name}`)
   execFileSync(process.execPath, ['--input-type=module', '--eval', [

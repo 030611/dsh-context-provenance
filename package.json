@@ -2,7 +2,10 @@
   "name": "dsh-context-provenance",
   "version": "0.1.0",
   "description": "Observe-only provenance ledger over public DeepSeek Harness runtime evidence",
-  "private": true,
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
@@ -27,6 +30,7 @@
     "dsh.plugin.json",
     "AUDIT.md",
     "README.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "scripts": {
